@@ -17,18 +17,18 @@ except ImportError:
 DAILY_MINUTES = 1320
 CAPACITIES = {
     "Arjun-1": 10117,
-    "Arjun-2": 12500,
-    "Arjun-3": 12500,
-    "Arjun-4": 11800,
-    "Arjun-5": 9976,
+    "Arjun-2": 13213,
+    "Arjun-3": 11679,
+    "Arjun-4": 13728,
+    "Arjun-5": 8976,
     "Arjun-6": 28089,
     "Arjun-7": 7920,
     "Arjun-8": 9900,
-    "Arjun-9": 12500,
-    "Arjun-10": 6500,
+    "Arjun-9": 11616,
+    "Arjun-10": 5148,
     "Arjun-11": 9240,
-    "Arjun-12": 8088,
-    "AutoLine": 24568,
+    "Arjun-12": 11088,
+    "AutoLine": 24440,
 }
 
 # --- Core Logic ---
@@ -218,7 +218,7 @@ def generate_monthly_excel(result_df, final_cols, title):
     return output.getvalue()
 
 
-def generate_weekly_excel_report(result_df, final_cols, start_date):
+def generate_weekly_excel_report(result_df, final_cols, start_date, selected_week):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
@@ -233,7 +233,16 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
         worksheet.set_default_row(22) # Globally set row height to 22
 
         # --- Formats ---
-        main_title_fmt = workbook.add_format({
+        company_title_fmt = workbook.add_format({
+            'font_size': 14, 'align': 'center', 'valign': 'vcenter', 'border': 1
+        })
+        format_no_fmt = workbook.add_format({
+            'font_size': 11, 'align': 'center', 'valign': 'vcenter', 'border': 1
+        })
+        month_title_fmt = workbook.add_format({
+            'bold': True, 'font_size': 12, 'align': 'center', 'valign': 'vcenter', 'border': 1
+        })
+        week_num_fmt = workbook.add_format({
             'bold': True, 'font_size': 12, 'align': 'center', 'valign': 'vcenter', 'border': 1
         })
         line_title_fmt = workbook.add_format({
@@ -250,7 +259,7 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
         data_fmt = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
         data_left_fmt = workbook.add_format({'border': 1, 'align': 'left', 'valign': 'vcenter', 'text_wrap': True})
         total_fmt = workbook.add_format({
-            'bold': True, 'bg_color': '#FFFF00', 'border': 1, 'align': 'center'
+            'bold': True, 'bg_color': '#FFFF00', 'border': 1, 'align': 'center', 'valign': 'vcenter'
         })
         date_head_fmt = workbook.add_format({
             'bold': True, 'font_color': 'white', 'bg_color': '#1F4E78', 
@@ -258,7 +267,7 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
         })
         actual_data_fmt = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
         
-        display_cols = ["Sr. No.", "Part Number", "Part Description", "Weekly Plan Qty"]
+        display_cols = ["Sr No", "Part Number", "Part Description", "Weekly Plan Qty"]
         date_cols = [c for c in final_cols if isinstance(c, datetime.date)]
         weekly_output_cols = display_cols + date_cols
         n_weekly_cols = len(weekly_output_cols)
@@ -272,16 +281,21 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
         current_row = 0
         h_pagebreaks = []
         
-        week_num = (start_date.day - 1) // 7 + 1
-        main_title = f"Week- {week_num} Production Plan {start_date.strftime('%B %Y')}"
+        month_title = f"Weekly Production Plan {start_date.strftime('%B %Y')}"
 
         unique_lines = result_df["Line Name"].unique()
         
         for idx, line in enumerate(unique_lines):
             line_df = result_df[result_df["Line Name"] == line]
             
-            # --- MAIN WEEK TITLE BEFORE EACH LINE ---
-            worksheet.merge_range(current_row, 0, current_row, n_weekly_cols-1, main_title, main_title_fmt)
+            # --- ROW 0: Company Info & Format No ---
+            worksheet.merge_range(current_row, 0, current_row, n_weekly_cols-3, "KSPG Automotive India Pvt Ltd , BU Bearing", company_title_fmt)
+            worksheet.merge_range(current_row, n_weekly_cols-2, current_row, n_weekly_cols-1, "Format No:- PRH.F.46.00", format_no_fmt)
+            current_row += 1
+            
+            # --- ROW 1: Month Info & Week No ---
+            worksheet.merge_range(current_row, 0, current_row, n_weekly_cols-3, month_title, month_title_fmt)
+            worksheet.merge_range(current_row, n_weekly_cols-2, current_row, n_weekly_cols-1, selected_week, week_num_fmt)
             current_row += 1
             
             # --- PLAN SECTION ---
@@ -298,7 +312,8 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
             sr_no_counter = 1
             for _, row_data in line_df.iterrows():
                 for col_idx, col_name in enumerate(weekly_output_cols):
-                    val = sr_no_counter if col_name == "Sr. No." else row_data[col_name]
+                    mapped_col = "Sr. No." if col_name == "Sr No" else col_name
+                    val = sr_no_counter if mapped_col == "Sr. No." else row_data[mapped_col]
                     cell_fmt = data_left_fmt if col_idx in [1, 2] else data_fmt
                     if pd.isna(val):
                         worksheet.write(current_row, col_idx, "", cell_fmt)
@@ -308,12 +323,11 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
                 sr_no_counter += 1
             
             # Plan Totals
-            worksheet.write(current_row, 0, "", total_fmt)
-            worksheet.write(current_row, 1, "Total", total_fmt)
-            worksheet.write(current_row, 2, "", total_fmt)
+            worksheet.merge_range(current_row, 0, current_row, 2, "Total", total_fmt)
             
             for col_idx in range(3, n_weekly_cols):
-                total_val = line_df[weekly_output_cols[col_idx]].sum()
+                mapped_col = "Sr. No." if weekly_output_cols[col_idx] == "Sr No" else weekly_output_cols[col_idx]
+                total_val = line_df[mapped_col].sum()
                 worksheet.write(current_row, col_idx, total_val, total_fmt)
             
             current_row += 2 # Empty row space
@@ -337,7 +351,8 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
                         # Blank for actuals
                         worksheet.write(current_row, col_idx, "", actual_data_fmt)
                     else:
-                        val = sr_no_counter if col_name == "Sr. No." else row_data[col_name]
+                        mapped_col = "Sr. No." if col_name == "Sr No" else col_name
+                        val = sr_no_counter if mapped_col == "Sr. No." else row_data[mapped_col]
                         cell_fmt = data_left_fmt if col_idx in [1, 2] else actual_data_fmt
                         if pd.isna(val):
                             worksheet.write(current_row, col_idx, "", cell_fmt)
@@ -347,12 +362,10 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
                 sr_no_counter += 1
             
             # Actual Totals
-            worksheet.write(current_row, 0, "", total_fmt)
-            worksheet.write(current_row, 1, "Total", total_fmt)
-            worksheet.write(current_row, 2, "", total_fmt)
+            worksheet.merge_range(current_row, 0, current_row, 2, "Total", total_fmt)
             worksheet.write(current_row, 3, line_df["Weekly Plan Qty"].sum(), total_fmt)
             for col_idx in range(4, n_weekly_cols):
-                worksheet.write(current_row, col_idx, "", total_fmt)
+                worksheet.write(current_row, col_idx, "", total_fmt) # empty yellow cells
             
             current_row += 2 # Empty row space
             
@@ -377,7 +390,7 @@ def generate_weekly_excel_report(result_df, final_cols, start_date):
     return output.getvalue()
 
 
-def generate_weekly_pdf_report(result_df, final_cols, start_date):
+def generate_weekly_pdf_report(result_df, final_cols, start_date, selected_week):
     """Generates a linewise PDF report using ReportLab, fitting 1 line per A4 Landscape page."""
     if not REPORTLAB_AVAILABLE:
         return None
@@ -397,16 +410,17 @@ def generate_weekly_pdf_report(result_df, final_cols, start_date):
     
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle('MainTitle', parent=styles['Normal'], alignment=1, fontSize=12, fontName='Helvetica-Bold')
+    company_style = ParagraphStyle('CompanyTitle', parent=styles['Normal'], alignment=1, fontSize=14, fontName='Helvetica')
+    format_no_style = ParagraphStyle('FormatNo', parent=styles['Normal'], alignment=1, fontSize=10, fontName='Helvetica')
     header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], alignment=1, fontSize=8, fontName='Helvetica-Bold', textColor=colors.white)
     data_style = ParagraphStyle('DataStyle', parent=styles['Normal'], alignment=0, fontSize=8, fontName='Helvetica')
     data_center_style = ParagraphStyle('DataCenter', parent=styles['Normal'], alignment=1, fontSize=8, fontName='Helvetica')
     
     date_cols = [c for c in final_cols if isinstance(c, datetime.date)]
-    display_cols = ["Sr. No.", "Part Number", "Part Description", "Weekly Plan Qty"]
+    display_cols = ["Sr No", "Part Number", "Part Description", "Weekly Plan Qty"]
     weekly_output_cols = display_cols + date_cols
     
-    week_num = (start_date.day - 1) // 7 + 1
-    main_title_txt = f"Week- {week_num} Production Plan {start_date.strftime('%B %Y')}"
+    month_title_txt = f"Weekly Production Plan {start_date.strftime('%B %Y')}"
     
     story = []
     
@@ -428,22 +442,29 @@ def generate_weekly_pdf_report(result_df, final_cols, start_date):
             ts.add('BACKGROUND', (0,-1), (-1,-1), colors.yellow)
             ts.add('TEXTCOLOR', (0,-1), (-1,-1), colors.black)
             ts.add('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold')
+            ts.add('SPAN', (0,-1), (2,-1))
         return ts
 
     for line_idx, line in enumerate(unique_lines):
         line_df = result_df[result_df["Line Name"] == line]
         
-        # 1. Main Title
-        story.append(Table([[Paragraph(f"<b>{main_title_txt}</b>", title_style)]], colWidths=[sum(col_widths)], style=TableStyle([
-            ('BOX', (0,0), (-1,-1), 0.5, colors.black),
-            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ])))
+        col1_w = sum(col_widths[:-2])
+        col2_w = sum(col_widths[-2:])
         
-        # 2. Plan Section
-        story.append(Table([[Paragraph(f"<b>{line} Production Plan</b>", title_style)]], colWidths=[sum(col_widths)], style=TableStyle([
+        title_data = [
+            [Paragraph("KSPG Automotive India Pvt Ltd , BU Bearing", company_style), Paragraph("Format No:- PRH.F.46.00", format_no_style)],
+            [Paragraph(f"<b>{month_title_txt}</b>", title_style), Paragraph(f"<b>{selected_week}</b>", title_style)],
+            [Paragraph(f"<b>{line} Production Plan</b>", title_style), ""]
+        ]
+        
+        title_table = Table(title_data, colWidths=[col1_w, col2_w], style=TableStyle([
             ('BOX', (0,0), (-1,-1), 0.5, colors.black),
+            ('INNERGRID', (0,0), (-1,-1), 0.5, colors.black),
             ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ])))
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+            ('SPAN', (0,2), (1,2)) 
+        ]))
+        story.append(title_table)
         
         headers = [c.strftime('%d-%b') if isinstance(c, datetime.date) else c for c in weekly_output_cols]
         plan_data = [[Paragraph(h, header_style) for h in headers]]
@@ -452,7 +473,8 @@ def generate_weekly_pdf_report(result_df, final_cols, start_date):
         for _, row_data in line_df.iterrows():
             row_items = []
             for col_idx, col_name in enumerate(weekly_output_cols):
-                val = sr_no if col_name == "Sr. No." else row_data[col_name]
+                mapped_col = "Sr. No." if col_name == "Sr No" else col_name
+                val = sr_no if mapped_col == "Sr. No." else row_data[mapped_col]
                 if pd.isna(val): val = ""
                 # strings vs numbers
                 p_style = data_style if col_idx in [1, 2] else data_center_style
@@ -461,10 +483,10 @@ def generate_weekly_pdf_report(result_df, final_cols, start_date):
             sr_no += 1
             
         # Total Row
-        total_row = [Paragraph("", data_center_style), Paragraph("<b>Total</b>", data_center_style), Paragraph("", data_style)]
+        total_row = [Paragraph("<b>Total</b>", data_center_style), Paragraph("", data_center_style), Paragraph("", data_style)]
         for col_idx in range(3, len(weekly_output_cols)):
-            col_name = weekly_output_cols[col_idx]
-            val = line_df[col_name].sum()
+            mapped_col = "Sr. No." if weekly_output_cols[col_idx] == "Sr No" else weekly_output_cols[col_idx]
+            val = line_df[mapped_col].sum()
             total_row.append(Paragraph(f"<b>{val}</b>", data_center_style))
         plan_data.append(total_row)
         
@@ -488,14 +510,15 @@ def generate_weekly_pdf_report(result_df, final_cols, start_date):
                 if isinstance(col_name, datetime.date):
                     row_items.append(Paragraph("", data_center_style))
                 else:
-                    val = sr_no if col_name == "Sr. No." else row_data[col_name]
+                    mapped_col = "Sr. No." if col_name == "Sr No" else col_name
+                    val = sr_no if mapped_col == "Sr. No." else row_data[mapped_col]
                     if pd.isna(val): val = ""
                     p_style = data_style if col_idx in [1, 2] else data_center_style
                     row_items.append(Paragraph(str(val), p_style))
             actual_data.append(row_items)
             sr_no += 1
             
-        actual_total_row = [Paragraph("", data_center_style), Paragraph("<b>Total</b>", data_center_style), Paragraph("", data_style)]
+        actual_total_row = [Paragraph("<b>Total</b>", data_center_style), Paragraph("", data_center_style), Paragraph("", data_style)]
         actual_total_row.append(Paragraph(f"<b>{line_df['Weekly Plan Qty'].sum()}</b>", data_center_style))
         for col_idx in range(4, len(weekly_output_cols)):
             actual_total_row.append(Paragraph("", data_center_style))
@@ -581,7 +604,11 @@ def render_monthly_plan():
 
 def render_weekly_plan():
     st.subheader("Weekly Planning")
-    start_date = st.date_input("Select Start Date", value=datetime.date.today())
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input("Select Start Date", value=datetime.date.today())
+    with col2:
+        selected_week = st.selectbox("Select Week", ["Week-1", "Week-2", "Week-3", "Week-4", "Week-5"])
     working_days = get_weekly_working_days(start_date, num_days=6)
     
     st.info(f"Planning Horizon: **{working_days[0].strftime('%A, %d %b %Y')}** to **{working_days[-1].strftime('%A, %d %b %Y')}** (6 working days)")
@@ -624,8 +651,8 @@ def render_weekly_plan():
                     display_cols = ["Sr. No.", "Part Number", "Part Description", "Weekly Plan Qty"] + date_cols_in_df
                     st.dataframe(result_df[display_cols].head(), use_container_width=True)
                     
-                    processed_excel = generate_weekly_excel_report(result_df, final_cols, start_date)
-                    processed_pdf = generate_weekly_pdf_report(result_df, final_cols, start_date)
+                    processed_excel = generate_weekly_excel_report(result_df, final_cols, start_date, selected_week)
+                    processed_pdf = generate_weekly_pdf_report(result_df, final_cols, start_date, selected_week)
                     
                     colexcel, colpdf = st.columns(2)
                     with colexcel:
